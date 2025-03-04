@@ -1,0 +1,14 @@
+{
+  "name": "firebase-webhook",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase": "^9.0.0",
+    "firebase-admin": "^11.11.1",
+    "firebase-functions": "^4.0.0"
+  }
+}
