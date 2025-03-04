@@ -1,14 +1,23 @@
 {
-  "name": "firebase-webhook",
+  "name": "dialogflow-firebase-functions",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Dialogflow CX webhooks with Firebase",
   "main": "index.js",
+  "type": "module",
   "engines": {
     "node": "22"
   },
   "dependencies": {
-    "firebase": "^9.0.0",
-    "firebase-admin": "^11.11.1",
-    "firebase-functions": "^4.0.0"
+    "express": "^4.18.2",
+    "firebase": "^10.1.0",
+    "firebase-admin": "^11.10.1",
+    "firebase-functions": "^4.4.1"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
   }
 }

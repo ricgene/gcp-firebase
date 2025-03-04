@@ -1,24 +1,59 @@
-//~/gitl/gcp-firebase/index.js
-// has FirebaseStorageWebhook https://us-central1-prizmpoc.cloudfunctions.net/dialogflowWebhook
+// index.js - Updated to ES modules format
 
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import express from 'express';
-import * as functions from 'firebase-functions';
+import { https } from 'firebase-functions';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import admin from 'firebase-admin';
 
-// Import Firebase Admin SDK
-const admin = require('firebase-admin');
+// For ES modules, get the current file path
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// -----------------------------------------------
-// For server-side operations (Admin SDK)
-// This uses service account credentials for privileged access
-const serviceAccount = require('./firebase-admin-creds.json');
-const adminApp = admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-}, 'admin-app');
+// Configure credentials
+// When deployed to Cloud Functions/Cloud Run in the same project, 
+// we can use application default credentials
+let serviceAccount;
+try {
+  // Only try to load from file in development environment
+  if (process.env.NODE_ENV === 'development') {
+    serviceAccount = JSON.parse(
+      readFileSync(join(__dirname, './firebase-admin-creds.json'), 'utf8')
+    );
+    console.log('Loaded credentials from local file (development mode)');
+  } else {
+    // In production, we'll use application default credentials
+    console.log('Using application default credentials (production mode)');
+    serviceAccount = undefined;
+  }
+} catch (error) {
+  console.log('Note: No local credentials file found, using default credentials');
+  serviceAccount = undefined;
+}
 
-// For client-side operations (if needed)
-// This uses your public Firebase config
+// Initialize Firebase Admin SDK
+let adminApp;
+try {
+  // Use cert if we have explicit credentials, otherwise use applicationDefault
+  if (serviceAccount) {
+    adminApp = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    }, 'admin-app');
+    console.log('Initialized Firebase Admin with explicit credentials');
+  } else {
+    // When deployed to Cloud Functions, use application default credentials
+    adminApp = admin.initializeApp();
+    console.log('Initialized Firebase Admin with application default credentials');
+  }
+} catch (error) {
+  console.error('Error initializing Firebase Admin:', error);
+  throw error;
+}
+
+// Firebase client config from environment variables
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
   authDomain: "prizmpoc.firebaseapp.com",
@@ -32,17 +67,10 @@ const firebaseConfig = {
 // Initialize regular Firebase (if needed for client operations)
 const clientApp = initializeApp(firebaseConfig, 'client-app');
 
-// Choose the appropriate Firestore instance based on your needs
-// For admin operations (server-side with full privileges):
+// Get Firestore instances
 const adminDb = admin.firestore();
-
-// For client operations (if needed):
 const clientDb = getFirestore(clientApp);
 
-// Use adminDb for your agent's server-side operations
-// Use clientDb only if you need client-side operations with limited privileges
-
-// -------------------------------
 // Use adminDb for the dialogflow webhook
 const db = adminDb;
 
@@ -111,12 +139,43 @@ dialogflowExpressApp.post('/', async (req, res) => {
 });
 
 // Export the dialogflow webhook for Cloud Functions
-export const dialogflowWebhook = functions.https.onRequest(dialogflowExpressApp);
+export const dialogflowWebhook = https.onRequest(dialogflowExpressApp);
+
+// Special firebase storage webhook function
+export const FirebaseStorageWebhook = https.onRequest(async (req, res) => {
+  try {
+    console.log("Firebase Storage webhook received:", req.body);
+    
+    // Store the request in Firestore
+    const dataToStore = {
+      type: 'STORAGE_WEBHOOK',
+      payload: req.body,
+      timestamp: new Date().toISOString()
+    };
+    
+    const docRef = await storeDataInFirebase(dataToStore);
+    
+    // Send a success response
+    res.status(200).json({
+      success: true,
+      message: "Storage webhook processed successfully",
+      requestId: docRef.id
+    });
+    
+  } catch (error) {
+    console.error("Error processing storage webhook:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error processing storage webhook",
+      error: error.message
+    });
+  }
+});
 
 // ========== New System Initiated Request Function ==========
 
 // Create a new function for system-initiated requests
-export const systemInitiatedRequest = functions.https.onRequest(async (req, res) => {
+export const systemInitiatedRequest = https.onRequest(async (req, res) => {
   try {
     console.log("System initiated request received:", req.query);
     
@@ -134,9 +193,6 @@ export const systemInitiatedRequest = functions.https.onRequest(async (req, res)
     };
     
     const docRef = await storeDataInFirebase(dataToStore);
-    
-    // Process the system-initiated request here
-    // Add your business logic based on the context and parameters
     
     // Send a response
     res.status(200).json({
@@ -170,7 +226,7 @@ async function testFirestore() {
   }
 }
 
-// Only call when running directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Only call when running locally
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   testFirestore();
 }
