@@ -1,3 +1,6 @@
+//~/gitl/gcp-firebase/index.js
+// has FirebaseStorageWebhook https://us-central1-prizmpoc.cloudfunctions.net/dialogflowWebhook
+
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import express from 'express';
@@ -5,10 +8,6 @@ import * as functions from 'firebase-functions';
 
 // Import Firebase Admin SDK
 const admin = require('firebase-admin');
-// Import regular Firebase SDK if needed for client-side features
-const { initializeApp, getFirestore } = require('firebase/app');
-require('firebase/firestore');
-
 
 // -----------------------------------------------
 // For server-side operations (Admin SDK)
@@ -44,6 +43,7 @@ const clientDb = getFirestore(clientApp);
 // Use clientDb only if you need client-side operations with limited privileges
 
 // -------------------------------
+// Use adminDb for the dialogflow webhook
 const db = adminDb;
 
 // Store data function
@@ -53,10 +53,10 @@ async function storeDataInFirebase(data) {
   try {
     const dataWithTimestamp = {
       ...data,
-      timestamp: data.timestamp || serverTimestamp()
+      timestamp: data.timestamp || admin.firestore.FieldValue.serverTimestamp()
     };
     
-    const docRef = await addDoc(collection(db, "conversations"), dataWithTimestamp);
+    const docRef = await db.collection("conversations").add(dataWithTimestamp);
     console.log("Document written with ID:", docRef.id);
     return docRef;
   } catch (error) {
@@ -65,12 +65,12 @@ async function storeDataInFirebase(data) {
   }
 }
 
-// Create Express app
-const expressApp = express();
-expressApp.use(express.json());
+// Create Express app for dialogflowWebhook
+const dialogflowExpressApp = express();
+dialogflowExpressApp.use(express.json());
 
 // Webhook handler
-expressApp.post('/', async (req, res) => {
+dialogflowExpressApp.post('/', async (req, res) => {
   try {
     const sessionInfo = req.body.sessionInfo || {};
     const parameters = sessionInfo.parameters || {};
@@ -110,16 +110,55 @@ expressApp.post('/', async (req, res) => {
   }
 });
 
-// Start the server
-const port = process.env.PORT || 8080;
-expressApp.listen(port, () => {
-  console.log(`dialogflowWebhook listening on port ${port}`);
+// Export the dialogflow webhook for Cloud Functions
+export const dialogflowWebhook = functions.https.onRequest(dialogflowExpressApp);
+
+// ========== New System Initiated Request Function ==========
+
+// Create a new function for system-initiated requests
+export const systemInitiatedRequest = functions.https.onRequest(async (req, res) => {
+  try {
+    console.log("System initiated request received:", req.query);
+    
+    // Extract parameters from the request query
+    const userId = req.query.userId || 'system';
+    const context = req.query.context || 'default';
+    
+    // Store the request in Firestore
+    const dataToStore = {
+      userId: userId,
+      context: context,
+      timestamp: new Date().toISOString(),
+      parameters: req.query,
+      type: 'SYSTEM_INITIATED_REQUEST'
+    };
+    
+    const docRef = await storeDataInFirebase(dataToStore);
+    
+    // Process the system-initiated request here
+    // Add your business logic based on the context and parameters
+    
+    // Send a response
+    res.status(200).json({
+      success: true,
+      message: "System-initiated request processed successfully",
+      requestId: docRef.id
+    });
+    
+  } catch (error) {
+    console.error("Error processing system-initiated request:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error processing system-initiated request",
+      error: error.message
+    });
+  }
 });
 
 // For local testing
 async function testFirestore() {
   try {
-    const docRef = await addDoc(collection(db, "test"), {
+    const docRef = await db.collection("test").add({
       message: "Hello from Node.js",
       timestamp: new Date()
     });
@@ -130,9 +169,6 @@ async function testFirestore() {
     throw e;
   }
 }
-
-// Export for Cloud Functions (not used in Gen2 but good for compatibility)
-export const dialogflowWebhook = functions.https.onRequest(expressApp);
 
 // Only call when running directly
 if (import.meta.url === `file://${process.argv[1]}`) {
