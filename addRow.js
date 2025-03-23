@@ -1,19 +1,22 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
-import 'dotenv/config';
+// types of security used: client and admin ( admin implemented now)
 
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: "prizmpoc.firebaseapp.com",
-  projectId: "prizmpoc",
-  storageBucket: "prizmpoc.firebasestorage.app",
-  messagingSenderId: "324482404818",
-  appId: process.env.FIREBASE_APP_ID,
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID
-};
+// Use CommonJS syntax for Node.js
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+require('dotenv').config(); // Load environment variables
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Initialize Firebase Admin with service account
+// You'll need to generate and download a service account key from the Firebase console
+const serviceAccount = require('../../fbserviceAccountKey-admin.json'); // Path to your service account key
+
+// Initialize the app with Admin SDK
+initializeApp({
+  credential: cert(serviceAccount),
+  projectId: "prizmpoc" // Your project ID (should match the one in serviceAccountKey.json)
+});
+
+// Get Firestore instance from Admin SDK
+const db = getFirestore();
 
 // Function to add a row to Firestore
 async function addTableRow(collectionName, rowData) {
@@ -23,8 +26,9 @@ async function addTableRow(collectionName, rowData) {
       ...rowData,
       createdAt: new Date(),
     };
-
-    const docRef = await addDoc(collection(db, collectionName), dataWithTimestamp);
+    
+    // Admin SDK syntax for adding documents
+    const docRef = await db.collection(collectionName).add(dataWithTimestamp);
     console.log("Document written with ID: ", docRef.id);
     return docRef.id;
   } catch (e) {
@@ -35,7 +39,7 @@ async function addTableRow(collectionName, rowData) {
 
 // Example usage with sample data
 const sampleRow = {
-  name: "John Doe2",
+  name: "david sp:wq",
   email: "john2@example.com",
   status: "inactive"
 };
