@@ -21,7 +21,7 @@ try {
   // Only try to load from file in development environment
   if (process.env.NODE_ENV === 'development') {
     serviceAccount = JSON.parse(
-      readFileSync(join(__dirname, './firebase-admin-creds.json'), 'utf8')
+      readFileSync(join(__dirname, '/home/rgenet/fbserviceAccountKey-admin.json'), 'utf8')
     );
     console.log('Loaded credentials from local file (development mode)');
   } else {
